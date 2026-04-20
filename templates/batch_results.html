@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block title %}Resultados del Set - Contador de Microalgas{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-12 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h1 class="h3 mb-0"><i class="fas fa-chart-line"></i> Resultados del Set</h1>
+                <p class="mb-0 mt-2">Set ID: <span id="batch-id-display">{{ batch_id }}</span></p>
+            </div>
+            <div class="card-body">
+                <!-- Selector de batch - MÁS ANCHO -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold"><i class="fas fa-database"></i> Seleccionar Set de Imágenes</label>
+                    <select id="batch-selector" class="form-select" style="max-width: 100%; width: 100%; font-size: 1rem; padding: 10px;">
+                        <option value="">Cargando sets...</option>
+                    </select>
+                    <div class="form-text text-muted">Seleccione el set de imágenes para ver sus resultados</div>
+                </div>
+                
+                <ul class="nav nav-tabs mb-4">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#manual">
+                            <i class="fas fa-hand-pointer"></i> Conteos Manuales
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#auto">
+                            <i class="fas fa-microchip"></i> Conteo Automático
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#correlation">
+                            <i class="fas fa-chart-line"></i> Correlación
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <!-- Conteos Manuales -->
+                    <div class="tab-pane fade show active" id="manual">
+                        <div id="manual-results-container">
+                            <div class="text-center">Cargando resultados manuales...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Conteo Automático -->
+                    <div class="tab-pane fade" id="auto">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="fas fa-microchip"></i> Seleccionar Modelo</label>
+                            <select class="form-select" id="auto-model-select" style="max-width: 300px;">
+                                <option value="default">Modelo por Defecto</option>
+                                <option value="monoclonal">Modelo Monoclonal</option>
+                                <option value="policlonal">Modelo Policlonal</option>
+                                <option value="refined">Modelo Refinado</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary mb-3" id="run-auto-btn">
+                            <i class="fas fa-play"></i> Ejecutar Conteo Automático
+                        </button>
+                        <div id="auto-results-container">
+                            <div class="text-muted">Seleccione un modelo y ejecute el conteo automático</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Correlación -->
+                    <div class="tab-pane fade" id="correlation">
+                        <div id="correlation-container">
+                            <div class="text-center">Cargando análisis de correlación...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para ver detalles de conteos -->
+<div class="modal fade" id="countsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-chart-bar"></i> Detalle de Conteos</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="counts-modal-body">
+                ...
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var currentBatchId = parseInt(document.getElementById('batch-id-display').innerText);
+    var batches = [];
+    
+    async function loadBatches() {
+        try {
+            var response = await fetch('/api/batches');
+            var data = await response.json();
+            
+            if (data.success && data.batches.length > 0) {
+                batches = data.batches;
+                var selector = document.getElementById('batch-selector');
+                selector.innerHTML = '';
+                
+                for (var i = 0; i < batches.length; i++) {
+                    var batch = batches[i];
+                    var option = document.createElement('option');
+                    option.value = batch.id;
+                    var cultureType = batch.culture_type || 'monoclonal';
+                    var cultureIcon = cultureType === 'monoclonal' ? '🔬' : '🌿';
+                    var cultureText = cultureType === 'monoclonal' ? 'Monoclonal' : 'Policlonal';
+                    option.textContent = batch.name + ' [' + cultureIcon + ' ' + cultureText + '] (ID: ' + batch.id + ', ' + batch.total_images + ' imágenes)';
+                    if (batch.id == currentBatchId) {
+                        option.selected = true;
+                    }
+                    selector.appendChild(option);
+                }
+                
+                var found = false;
+                for (var i = 0; i < batches.length; i++) {
+                    if (batches[i].id == currentBatchId) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && batches.length > 0) {
+                    currentBatchId = batches[0].id;
+                    selector.value = currentBatchId;
+                    document.getElementById('batch-id-display').innerText = currentBatchId;
+                }
+                
+                loadManualResults();
+                loadCorrelation();
+            }
+        } catch (error) {
+            console.error('Error loading batches:', error);
+        }
+    }
+    
+    document.getElementById('batch-selector').addEventListener('change', function() {
+        currentBatchId = parseInt(this.value);
+        document.getElementById('batch-id-display').innerText = currentBatchId;
+        loadManualResults();
+        loadCorrelation();
+        document.getElementById('auto-results-container').innerHTML = '<div class="text-muted">Seleccione un modelo y ejecute el conteo automático</div>';
+    });
+    
+    async function loadManualResults() {
+        var container = document.getElementById('manual-results-container');
+        container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div><br>Cargando resultados manuales...</div>';
+        
+        try {
+            var response = await fetch('/api/batch/auto-results/' + currentBatchId);
+            var data = await response.json();
+            
+            if (data.success && data.manual_results) {
+                var technicians = Object.keys(data.manual_results);
+                if (technicians.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">📭 Aún no hay conteos manuales completados para este set</div>';
+                    return;
+                }
+                
+                var html = '';
+                for (var i = 0; i < technicians.length; i++) {
+                    var tech = technicians[i];
+                    var results = data.manual_results[tech];
+                    var counts = results.counts;
+                    var imageCount = Object.keys(counts).length;
+                    var totalCount = 0;
+                    var totalTime = results.total_time || 0;
+                    
+                    for (var imgId in counts) {
+                        if (typeof counts[imgId] === 'object') {
+                            totalCount += counts[imgId].total || 0;
+                        } else {
+                            totalCount += counts[imgId];
+                        }
+                    }
+                    
+                    var avgCount = imageCount > 0 ? (totalCount / imageCount).toFixed(1) : '0';
+                    var avgTime = imageCount > 0 ? (totalTime / imageCount).toFixed(1) : '0';
+                    
+                    html += '<div class="card mb-3">';
+                    html += '<div class="card-header bg-light">';
+                    html += '<h5 class="mb-0"><i class="fas fa-user-circle"></i> ' + tech + '</h5>';
+                    html += '</div>';
+                    html += '<div class="card-body">';
+                    html += '<div class="row mb-3">';
+                    html += '<div class="col-md-3">';
+                    html += '<div class="border rounded p-2 text-center">';
+                    html += '<small class="text-muted">Imágenes</small>';
+                    html += '<h4 class="mb-0">' + imageCount + '</h4>';
+                    html += '</div></div>';
+                    html += '<div class="col-md-3">';
+                    html += '<div class="border rounded p-2 text-center">';
+                    html += '<small class="text-muted">Total Microalgas</small>';
+                    html += '<h4 class="mb-0 text-success">' + totalCount + '</h4>';
+                    html += '</div></div>';
+                    html += '<div class="col-md-3">';
+                    html += '<div class="border rounded p-2 text-center">';
+                    html += '<small class="text-muted">Promedio/Imagen</small>';
+                    html += '<h4 class="mb-0">' + avgCount + '</h4>';
+                    html += '</div></div>';
+                    html += '<div class="col-md-3">';
+                    html += '<div class="border rounded p-2 text-center">';
+                    html += '<small class="text-muted">Tiempo Total</small>';
+                    html += '<h4 class="mb-0">' + totalTime.toFixed(1) + 's</h4>';
+                    html += '</div></div>';
+                    html += '</div>';
+                    html += '<button class="btn btn-primary btn-sm" onclick="showCountsModal(\'' + tech + '\', ' + JSON.stringify(counts).replace(/"/g, '&quot;') + ', ' + totalTime.toFixed(1) + ')">';
+                    html += '<i class="fas fa-chart-bar"></i> Ver Conteos Detallados (' + imageCount + ' imágenes)';
+                    html += '</button>';
+                    html += '</div></div>';
+                }
+                
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div class="alert alert-info">📭 No hay resultados manuales disponibles</div>';
+            }
+        } catch (error) {
+            container.innerHTML = '<div class="alert alert-danger">❌ Error cargando resultados: ' + error.message + '</div>';
+        }
+    }
+    
+    function showCountsModal(technician, counts, totalTime) {
+        var modalBody = document.getElementById('counts-modal-body');
+        var imageIds = Object.keys(counts);
+        var totalCount = 0;
+        var hasSpecies = false;
+        
+        for (var imgId in counts) {
+            if (typeof counts[imgId] === 'object' && counts[imgId].species1 !== undefined) {
+                hasSpecies = true;
+                totalCount += counts[imgId].total || 0;
+            } else {
+                totalCount += counts[imgId];
+            }
+        }
+        
+        var avgCount = imageIds.length > 0 ? (totalCount / imageIds.length).toFixed(1) : '0';
+        var avgTime = imageIds.length > 0 ? (totalTime / imageIds.length).toFixed(1) : '0';
+        
+        var html = '<div class="mb-3">';
+        html += '<div class="alert alert-info">';
+        html += '<strong><i class="fas fa-user"></i> Técnico:</strong> ' + technician + '<br>';
+        html += '<strong><i class="fas fa-images"></i> Total de imágenes:</strong> ' + imageIds.length + '<br>';
+        html += '<strong><i class="fas fa-microscope"></i> Total de microalgas:</strong> <span class="text-success fw-bold">' + totalCount + '</span><br>';
+        html += '<strong><i class="fas fa-chart-line"></i> Promedio por imagen:</strong> ' + avgCount + ' microalgas<br>';
+        html += '<strong><i class="fas fa-clock"></i> Tiempo promedio por imagen:</strong> ' + avgTime + ' segundos<br>';
+        html += '<strong><i class="fas fa-hourglass-half"></i> Tiempo total:</strong> ' + totalTime.toFixed(1) + ' segundos';
+        html += '</div>';
+        
+        html += '<div class="table-responsive" style="max-height: 400px; overflow-y: auto;">';
+        html += '<table class="table table-striped table-hover">';
+        html += '<thead class="table-dark sticky-top">';
+        html += '<tr>';
+        html += '<th>#</th>';
+        html += '<th>ID Imagen</th>';
+        html += '<th>Conteo Total</th>';
+        if (hasSpecies) {
+            html += '<th>Especie 1</th>';
+            html += '<th>Especie 2</th>';
+            html += '<th>Especie 3</th>';
+        }
+        html += '<th>Barra Visual</th>';
+        html += '</tr>';
+        html += '</thead>';
+        html += '<tbody>';
+        
+        var maxCount = 0;
+        for (var imgId in counts) {
+            var count = typeof counts[imgId] === 'object' ? counts[imgId].total : counts[imgId];
+            if (count > maxCount) maxCount = count;
+        }
+        
+        var sortedIds = imageIds.sort(function(a, b) { return parseInt(a) - parseInt(b); });
+        for (var i = 0; i < sortedIds.length; i++) {
+            var imgId = sortedIds[i];
+            var countData = counts[imgId];
+            var count = typeof countData === 'object' ? countData.total : countData;
+            var percent = maxCount > 0 ? (count / maxCount) * 100 : 0;
+            var barColor = '';
+            if (count < 5) barColor = 'bg-success';
+            else if (count < 10) barColor = 'bg-info';
+            else if (count < 15) barColor = 'bg-warning';
+            else barColor = 'bg-danger';
+            
+            html += '<tr>';
+            html += '<td>' + (i + 1) + '</td>';
+            html += '<td><strong>' + imgId + '</strong></td>';
+            html += '<td><span class="badge bg-primary fs-6">' + count + '</span></td>';
+            if (hasSpecies && typeof countData === 'object') {
+                html += '<td>' + (countData.species1 || 0) + '</td>';
+                html += '<td>' + (countData.species2 || 0) + '</td>';
+                html += '<td>' + (countData.species3 || 0) + '</td>';
+            }
+            html += '<td style="width: 35%;">';
+            html += '<div class="progress" style="height: 25px;">';
+            html += '<div class="progress-bar ' + barColor + '" role="progressbar" style="width: ' + percent + '%;" aria-valuenow="' + count + '" aria-valuemin="0" aria-valuemax="' + maxCount + '">';
+            html += count + ' microalgas';
+            html += '</div>';
+            html += '</div>';
+            html += '</td>';
+            html += '</tr>';
+        }
+        
+        html += '</tbody>';
+        html += '</table>';
+        html += '</div>';
+        
+        modalBody.innerHTML = html;
+        
+        var modal = new bootstrap.Modal(document.getElementById('countsModal'));
+        modal.show();
+    }
+    
+    async function runAutoCount() {
+        var modelType = document.getElementById('auto-model-select').value;
+        var container = document.getElementById('auto-results-container');
+        container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div><br>Ejecutando conteo automático...</div>';
+        
+        try {
+            var response = await fetch('/api/batch/auto-count/' + currentBatchId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model_type: modelType })
+            });
+            
+            var data = await response.json();
+            
+            if (data.success) {
+                var html = '<div class="alert alert-success">';
+                html += '<strong><i class="fas fa-check-circle"></i> Conteo automático completado</strong><br>';
+                html += '<strong>Modelo utilizado:</strong> ' + data.model_used + '<br>';
+                html += '<strong>Tipo de modelo:</strong> ' + data.model_type + '<br>';
+                html += '<strong>Tiempo total:</strong> ' + (data.total_time ? data.total_time.toFixed(2) : '0') + ' segundos<br>';
+                html += '<strong>Tiempo promedio por imagen:</strong> ' + (data.average_time_per_image ? data.average_time_per_image.toFixed(3) : '0') + ' segundos<br>';
+                html += '<strong>Total de imágenes:</strong> ' + data.total_images;
+                html += '</div>';
+                
+                html += '<div class="table-responsive" style="max-height: 500px; overflow-y: auto;">';
+                html += '<table class="table table-striped table-hover">';
+                html += '<thead class="table-dark sticky-top">';
+                html += '<tr><th>#</th><th>Imagen</th><th>Conteo</th><th>Tiempo (seg)</th><th>Barra Visual</th></tr>';
+                html += '</thead><tbody>';
+                
+                var maxCount = 0;
+                if (data.results && data.results.length > 0) {
+                    for (var i = 0; i < data.results.length; i++) {
+                        if (data.results[i].count > maxCount) maxCount = data.results[i].count;
+                    }
+                    
+                    for (var i = 0; i < data.results.length; i++) {
+                        var result = data.results[i];
+                        var percent = maxCount > 0 ? (result.count / maxCount) * 100 : 0;
+                        var barColor = result.count < 5 ? 'bg-success' : (result.count < 10 ? 'bg-info' : (result.count < 15 ? 'bg-warning' : 'bg-danger'));
+                        
+                        html += '<tr>';
+                        html += '<td>' + (i + 1) + '</td>';
+                        html += '<td><small>' + (result.filename ? result.filename.substring(0, 35) : 'Imagen ' + result.image_id) + '</small></td>';
+                        html += '<td><span class="badge bg-primary fs-6">' + result.count + '</span></td>';
+                        html += '<td>' + (result.processing_time ? result.processing_time.toFixed(3) : '0') + '</td>';
+                        html += '<td style="width: 35%;"><div class="progress" style="height: 25px;"><div class="progress-bar ' + barColor + '" style="width: ' + percent + '%;">' + result.count + '</div></div></td>';
+                        html += '</tr>';
+                    }
+                } else {
+                    html += '<tr><td colspan="5" class="text-center">No hay resultados</td</tr>';
+                }
+                
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+                loadCorrelation();
+                showAlert('Conteo automático completado exitosamente', 'success');
+            } else {
+                container.innerHTML = '<div class="alert alert-danger">❌ Error: ' + (data.error || 'Error desconocido') + '</div>';
+            }
+        } catch (error) {
+            container.innerHTML = '<div class="alert alert-danger">❌ Error de conexión: ' + error.message + '</div>';
+        }
+    }
+    
+    async function loadCorrelation() {
+        var container = document.getElementById('correlation-container');
+        container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div><br>Cargando análisis de correlación...</div>';
+        
+        try {
+            var response = await fetch('/api/batch/analyze-correlation/' + currentBatchId);
+            var data = await response.json();
+            
+            if (data.success) {
+                var html = '';
+                
+                html += '<div class="alert alert-info">';
+                html += '<strong><i class="fas fa-info-circle"></i> Información del análisis:</strong><br>';
+                html += '📊 Total de imágenes en el set: ' + (data.total_images || 0) + '<br>';
+                html += '👥 Técnicos que completaron el conteo: ' + (data.total_technicians || 0) + '<br>';
+                html += '🤖 Modelo automático utilizado: ' + (data.auto_model || 'N/A') + '<br>';
+                html += '📅 Procesado automático: ' + (data.auto_processed_at ? new Date(data.auto_processed_at).toLocaleString() : 'N/A');
+                html += '</div>';
+                
+                if (data.plot_url) {
+                    html += '<div class="text-center mb-4">';
+                    html += '<img src="' + data.plot_url + '?t=' + Date.now() + '" class="img-fluid rounded shadow" style="max-width: 100%; border: 1px solid #ddd;" alt="Gráfico de correlación">';
+                    html += '<p class="mt-2 text-muted"><small>El gráfico muestra la relación entre conteos manuales y automáticos. La línea roja es la regresión, la verde es la correlación perfecta.</small></p>';
+                    html += '</div>';
+                }
+                
+                // Correlación Global
+                if (data.global_correlation && data.global_correlation.correlation !== null) {
+                    var gc = data.global_correlation;
+                    var significanceClass = gc.significant === 1 ? 'success' : 'warning';
+                    
+                    html += '<div class="alert alert-' + significanceClass + '">';
+                    html += '<h4><i class="fas fa-chart-line"></i> 📈 Correlación Global</h4>';
+                    html += '<div class="row">';
+                    html += '<div class="col-md-6">';
+                    html += '<p><strong>📊 Coeficiente de Pearson (r):</strong> <span class="fw-bold fs-5">' + (gc.correlation || 'N/A') + '</span></p>';
+                    html += '<p><strong>📉 Valor p:</strong> ' + (gc.p_value || 'N/A') + '</p>';
+                    html += '</div>';
+                    html += '<div class="col-md-6">';
+                    html += '<p><strong>📝 Interpretación:</strong> <span class="fw-bold">' + (gc.interpretation || 'N/A') + '</span></p>';
+                    html += '<p><strong>🔬 Detalle:</strong> ' + (gc.detailed_interpretation || 'N/A') + '</p>';
+                    html += '<p><strong>🔢 Muestras analizadas:</strong> ' + (gc.n_samples || 0) + '</p>';
+                    html += '</div>';
+                    html += '</div>';
+                    
+                    if (gc.significant === 1) {
+                        html += '<div class="alert alert-success mt-2 mb-0">';
+                        html += '✅ <strong>Estadísticamente significativo (p &lt; 0.05)</strong> - Los resultados son confiables';
+                        html += '</div>';
+                    } else {
+                        html += '<div class="alert alert-warning mt-2 mb-0">';
+                        html += '⚠️ <strong>No estadísticamente significativo (p ≥ 0.05)</strong> - Los resultados podrían deberse al azar';
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                } else {
+                    html += '<div class="alert alert-warning">';
+                    html += '<i class="fas fa-exclamation-triangle"></i> ⚠️ No hay suficientes datos para calcular la correlación global.';
+                    html += '<br>Se necesitan al menos 2 pares de datos (conteo manual vs automático).';
+                    html += '</div>';
+                }
+                
+                // Resultados por Técnico
+                if (data.technician_results && data.technician_results.length > 0) {
+                    html += '<h4 class="mt-4"><i class="fas fa-users"></i> 👥 Resultados por Técnico</h4>';
+                    html += '<div class="table-responsive">';
+                    html += '<table class="table table-bordered table-hover">';
+                    html += '<thead class="table-dark">';
+                    html += '<tr>';
+                    html += '<th>Técnico</th>';
+                    html += '<th>r (Pearson)</th>';
+                    html += '<th>Valor p</th>';
+                    html += '<th>Interpretación</th>';
+                    html += '<th>Muestras</th>';
+                    html += '<th>Tiempo Total (seg)</th>';
+                    html += '</tr>';
+                    html += '</thead><tbody>';
+                    
+                    for (var i = 0; i < data.technician_results.length; i++) {
+                        var tech = data.technician_results[i];
+                        var corrColor = '';
+                        if (tech.correlation !== null) {
+                            var absTechCorr = Math.abs(tech.correlation);
+                            if (absTechCorr >= 0.7) {
+                                corrColor = 'table-success';
+                            } else if (absTechCorr >= 0.4) {
+                                corrColor = 'table-warning';
+                            } else {
+                                corrColor = 'table-danger';
+                            }
+                        }
+                        html += '<tr class="' + corrColor + '">';
+                        html += '<td><strong>' + (tech.technician || 'N/A') + '</strong></td>';
+                        html += '<td>' + (tech.correlation !== null ? tech.correlation.toFixed(4) : 'N/A') + '</td>';
+                        html += '<td>' + (tech.p_value !== null ? tech.p_value.toExponential(4) : 'N/A') + '</td>';
+                        html += '<td>' + (tech.interpretation || 'N/A') + '</td>';
+                        html += '<td>' + (tech.n_samples || 0) + '</td>';
+                        html += '<td>' + (tech.total_time ? tech.total_time.toFixed(1) : '-') + '</td>';
+                        html += '</tr>';
+                    }
+                    
+                    html += '</tbody></table></div>';
+                }
+                
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<div class="alert alert-warning">⚠️ No hay suficientes datos para calcular la correlación.</div>';
+            }
+        } catch (error) {
+            container.innerHTML = '<div class="alert alert-danger">❌ Error cargando análisis de correlación: ' + error.message + '</div>';
+        }
+    }
+    
+    document.getElementById('run-auto-btn').addEventListener('click', runAutoCount);
+    loadBatches();
+</script>
+{% endblock %}

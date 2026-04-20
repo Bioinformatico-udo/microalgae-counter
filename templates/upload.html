@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Subir Imagen - Contador de Microalgas{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-8 mx-auto"><div class="card"><div class="card-header"><h1 class="h3 mb-0"><i class="fas fa-upload"></i> Subir Imagen de Cultivo</h1></div><div class="card-body">
+<form id="upload-form"><div class="mb-3"><label for="culture-type" class="form-label">Tipo de Cultivo</label><select class="form-select" id="culture-type"><option value="unknown">No especificado</option><option value="monoclonal">Monoclonal</option><option value="policlonal">Policlonal</option></select></div>
+<div class="mb-3"><label for="image-input" class="form-label">Seleccionar Imagen</label><input type="file" class="form-control" id="image-input" accept="image/jpeg,image/png,image/jpg,image/tiff"><div class="form-text">Formatos soportados: JPG, PNG, TIFF (máx. 16MB)</div></div>
+<div id="preview-container" class="text-center mb-3" style="display:none"><img id="image-preview" class="image-preview" style="max-width:100%;max-height:300px"></div>
+<button type="submit" class="btn btn-primary w-100"><i class="fas fa-cloud-upload-alt"></i> Subir Imagen</button></form>
+<div id="result-container" class="mt-4" style="display:none"><div class="alert alert-success"><h4><i class="fas fa-check-circle"></i> Imagen subida exitosamente</h4><p id="result-message"></p><hr><div class="d-grid gap-2"><a href="/manual-count" class="btn btn-success">Ir a Conteo Manual</a><a href="/batch-setup" class="btn btn-info">Crear Set de Imágenes</a><a href="/upload" class="btn btn-secondary">Subir otra imagen</a></div></div></div>
+</div></div></div></div>
+<script>
+document.getElementById("image-input").addEventListener("change",function(e){var file=e.target.files[0];if(file){var reader=new FileReader();reader.onload=function(event){document.getElementById("image-preview").src=event.target.result;document.getElementById("preview-container").style.display="block";};reader.readAsDataURL(file);}});
+document.getElementById("upload-form").addEventListener("submit",async function(e){e.preventDefault();var file=document.getElementById("image-input").files[0];if(!file){showAlert("Por favor seleccione una imagen","warning");return;}
+var formData=new FormData();formData.append("image",file);formData.append("culture_type",document.getElementById("culture-type").value);showLoading();try{var response=await fetch("/api/upload-image",{method:"POST",body:formData});var data=await response.json();hideLoading();if(data.success){localStorage.setItem("last_image_id",data.image_id);document.getElementById("result-message").innerHTML="<strong>Imagen:</strong> "+data.filename+"<br><strong>ID:</strong> "+data.image_id;document.getElementById("result-container").style.display="block";document.getElementById("upload-form").style.display="none";}else{showAlert("Error: "+data.error,"danger");}}catch(error){hideLoading();showAlert("Error de conexión: "+error.message,"danger");}});
+</script>
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+  "yolo11m_default": {
+    "version": "1.0",
+    "accuracy": 0.85,
+    "description": "Modelo por defecto para todo tipo de microalgas",
+    "training_date": "2026-04-19T10:20:12.647722"
+  }
+}

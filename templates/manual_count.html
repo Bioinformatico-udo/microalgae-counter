@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Conteo Manual - Contador de Microalgas{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-8 mx-auto"><div class="card"><div class="card-header"><h1 class="h3 mb-0"><i class="fas fa-hand-pointer"></i> Conteo Manual de Microalgas</h1></div><div class="card-body">
+<div class="mb-3"><label for="technician-name" class="form-label">Nombre del Técnico</label><input type="text" class="form-control" id="technician-name" required></div>
+<div class="mb-3"><label for="image-id" class="form-label">ID de Imagen</label><input type="number" class="form-control" id="image-id" placeholder="Ingrese el ID de la imagen"><div class="form-text">El ID se muestra después de subir la imagen</div></div>
+<div class="mb-3"><label class="form-label">Temporizador</label><div class="timer" id="timer">0:00.0</div><div class="d-grid gap-2 d-md-flex justify-content-md-center mt-2"><button type="button" class="btn btn-success" id="start-timer"><i class="fas fa-play"></i> Iniciar</button><button type="button" class="btn btn-warning" id="pause-timer"><i class="fas fa-pause"></i> Pausar</button><button type="button" class="btn btn-secondary" id="reset-timer"><i class="fas fa-redo"></i> Reiniciar</button></div></div>
+<div class="mb-3"><label for="count-value" class="form-label">Conteo de Microalgas</label><input type="number" class="form-control" id="count-value" placeholder="Número de microalgas contadas" required></div>
+<div class="mb-3"><label for="notes" class="form-label">Notas (opcional)</label><textarea class="form-control" id="notes" rows="3"></textarea></div>
+<button type="submit" class="btn btn-primary w-100" id="submit-count"><i class="fas fa-save"></i> Guardar Conteo</button>
+<div id="success-message" class="alert alert-success mt-3" style="display:none">✅ Conteo guardado exitosamente</div>
+</div></div></div></div>
+<script>
+var timerInterval=null,startTime=null,isRunning=false;
+var lastImageId=localStorage.getItem("last_image_id");if(lastImageId)document.getElementById("image-id").value=lastImageId;
+function updateTimer(){var elapsed=(Date.now()-startTime)/1000;var minutes=Math.floor(elapsed/60);var seconds=(elapsed%60).toFixed(1);document.getElementById("timer").textContent=minutes+":"+seconds.toString().padStart(4,"0");}
+document.getElementById("start-timer").addEventListener("click",function(){if(!isRunning){startTime=Date.now()-(startTime?(Date.now()-startTime):0);timerInterval=setInterval(updateTimer,100);isRunning=true;}});
+document.getElementById("pause-timer").addEventListener("click",function(){if(isRunning){clearInterval(timerInterval);isRunning=false;}});
+document.getElementById("reset-timer").addEventListener("click",function(){clearInterval(timerInterval);isRunning=false;startTime=null;document.getElementById("timer").textContent="0:00.0";});
+document.getElementById("submit-count").addEventListener("click",async function(){var technician=document.getElementById("technician-name").value;var imageId=document.getElementById("image-id").value;var count=document.getElementById("count-value").value;var notes=document.getElementById("notes").value;if(!technician||!imageId||!count){showAlert("Complete todos los campos","warning");return;}
+var timeTaken=0;if(startTime&&!isRunning)timeTaken=(Date.now()-startTime)/1000;showLoading();try{var response=await fetch("/api/manual-count",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({technician_name:technician,image_id:parseInt(imageId),count:parseInt(count),time_taken:timeTaken,notes:notes})});var data=await response.json();hideLoading();if(data.success){document.getElementById("success-message").style.display="block";document.getElementById("count-form")?.reset();document.getElementById("timer").textContent="0:00.0";startTime=null;isRunning=false;setTimeout(function(){document.getElementById("success-message").style.display="none";},3000);}else{showAlert("Error: "+data.error,"danger");}}catch(error){hideLoading();showAlert("Error de conexión","danger");}});
+</script>
+{% endblock %}

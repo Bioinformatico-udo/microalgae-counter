@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Configurar Set de Imágenes - Contador de Microalgas{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h1 class="h3 mb-0"><i class="fas fa-layer-group"></i> Configurar Set de Imágenes</h1>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs mb-4">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#new">
+                            <i class="fas fa-plus"></i> Nuevo Set
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#existing">
+                            <i class="fas fa-list"></i> Sets Existentes
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="new">
+                        <form id="create-batch-form">
+                            <div class="mb-3">
+                                <label for="batch-name" class="form-label">Nombre del Set</label>
+                                <input type="text" class="form-control" id="batch-name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="batch-description" class="form-label">Descripción</label>
+                                <textarea class="form-control" id="batch-description" rows="2"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Tipo de Cultivo</label>
+                                <select class="form-select" id="culture-type">
+                                    <option value="monoclonal" selected>🔬 Monoclonal (1 especie) - Por defecto</option>
+                                    <option value="policlonal">🌿 Policlonal (3 especies)</option>
+                                </select>
+                                <div class="form-text text-muted">Seleccione el tipo de cultivo. Por defecto es Monoclonal.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Imágenes del Set</label>
+                                <div id="selected-images-container" class="mb-2">
+                                    <div class="alert alert-info">No hay imágenes seleccionadas</div>
+                                </div>
+                                <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#imageModal">
+                                    <i class="fas fa-images"></i> Seleccionar Imágenes
+                                </button>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save"></i> Crear Set
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="existing">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre</th>
+                                        <th>Tipo</th>
+                                        <th>Imágenes</th>
+                                        <th>Creado</th>
+                                        <th>Técnicos</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="batches-list">
+                                    <tr><td colspan="7" class="text-center">Cargando...</td</tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para seleccionar imágenes -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Seleccionar Imágenes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Subir nuevas imágenes</label>
+                    <input type="file" class="form-control" id="upload-images" multiple accept="image/jpeg,image/png,image/jpg">
+                    <div class="form-text">Puede seleccionar múltiples imágenes a la vez</div>
+                </div>
+                <div id="upload-progress" class="mb-3" style="display:none">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                    </div>
+                </div>
+                <hr>
+                <div id="available-images" class="row">
+                    <div class="col-12 text-center">Cargando imágenes...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" id="confirm-images">Confirmar Selección</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var selectedImages = [];
+
+async function loadBatches() {
+    const response = await fetch('/api/batches');
+    const data = await response.json();
+    const tbody = document.getElementById('batches-list');
+    if (data.success && data.batches.length > 0) {
+        tbody.innerHTML = '';
+        for (const batch of data.batches) {
+            const row = tbody.insertRow();
+            row.insertCell(0).textContent = batch.id;
+            row.insertCell(1).textContent = batch.name;
+            var cultureType = batch.culture_type || 'monoclonal';
+            var cultureIcon = cultureType === 'monoclonal' ? '🔬' : '🌿';
+            var cultureText = cultureType === 'monoclonal' ? 'Monoclonal' : 'Policlonal';
+            row.insertCell(2).innerHTML = cultureIcon + ' ' + cultureText;
+            row.insertCell(3).textContent = batch.total_images;
+            row.insertCell(4).textContent = new Date(batch.created_at).toLocaleDateString();
+            row.insertCell(5).textContent = batch.technicians_completed?.join(', ') || '-';
+            row.insertCell(6).innerHTML = `
+                <a href="/batch-count/${batch.id}" class="btn btn-sm btn-success">Contar</a>
+                <a href="/batch-results/${batch.id}" class="btn btn-sm btn-info">Resultados</a>
+            `;
+        }
+    } else {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">No hay sets creados</td</tr>';
+    }
+}
+
+async function loadAvailableImages() {
+    const container = document.getElementById('available-images');
+    container.innerHTML = '<div class="col-12 text-center">Cargando imágenes...</div>';
+    try {
+        const response = await fetch('/api/images');
+        const data = await response.json();
+        if (data.success && data.images.length > 0) {
+            container.innerHTML = '';
+            for (const img of data.images) {
+                const col = document.createElement('div');
+                col.className = 'col-md-4 mb-3';
+                col.innerHTML = `
+                    <div class="card">
+                        <img src="${img.url}" class="card-img-top" style="height:150px;object-fit:cover" onerror="this.src='https://via.placeholder.com/150?text=Error'">
+                        <div class="card-body p-2">
+                            <div class="form-check">
+                                <input class="form-check-input image-checkbox" type="checkbox" value="${img.id}" id="img_${img.id}">
+                                <label class="form-check-label small" for="img_${img.id}">${img.filename.substring(0,30)}</label>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(col);
+            }
+            document.querySelectorAll('.image-checkbox').forEach(cb => cb.addEventListener('change', updateSelectedImages));
+        } else {
+            container.innerHTML = '<div class="col-12 text-muted">No hay imágenes. Suba imágenes primero.</div>';
+        }
+    } catch (error) {
+        container.innerHTML = '<div class="col-12 text-danger">Error cargando imágenes</div>';
+    }
+}
+
+function updateSelectedImages() {
+    selectedImages = [];
+    document.querySelectorAll('.image-checkbox:checked').forEach(cb => selectedImages.push(parseInt(cb.value)));
+    const container = document.getElementById('selected-images-container');
+    if (selectedImages.length > 0) {
+        container.innerHTML = `<div class="alert alert-success"><strong>${selectedImages.length} imágenes seleccionadas</strong><ul>${selectedImages.map(id => `<li>ID: ${id}</li>`).join('')}</ul></div>`;
+    } else {
+        container.innerHTML = '<div class="alert alert-info">No hay imágenes seleccionadas</div>';
+    }
+}
+
+document.getElementById('upload-images').addEventListener('change', async function(e) {
+    const files = e.target.files;
+    if (files.length === 0) return;
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) formData.append('images', files[i]);
+    document.getElementById('upload-progress').style.display = 'block';
+    const progressBar = document.querySelector('#upload-progress .progress-bar');
+    progressBar.style.width = '50%';
+    try {
+        const response = await fetch('/api/upload-multiple', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (data.success) {
+            progressBar.style.width = '100%';
+            showAlert(data.uploaded_count + ' imágenes subidas exitosamente', 'success');
+            setTimeout(() => {
+                document.getElementById('upload-progress').style.display = 'none';
+                progressBar.style.width = '0%';
+                loadAvailableImages();
+            }, 1000);
+        } else {
+            showAlert('Error al subir imágenes', 'danger');
+            document.getElementById('upload-progress').style.display = 'none';
+        }
+    } catch (error) {
+        showAlert('Error de conexión', 'danger');
+        document.getElementById('upload-progress').style.display = 'none';
+    }
+    e.target.value = '';
+});
+
+document.getElementById('create-batch-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const name = document.getElementById('batch-name').value;
+    const cultureType = document.getElementById('culture-type').value;
+    if (!name) { showAlert('Ingrese un nombre para el set', 'warning'); return; }
+    if (selectedImages.length === 0) { showAlert('Seleccione al menos una imagen', 'warning'); return; }
+    showLoading();
+    try {
+        const response = await fetch('/api/create-batch', {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                name: name, 
+                description: document.getElementById('batch-description').value, 
+                created_by: 'admin', 
+                image_ids: selectedImages,
+                culture_type: cultureType
+            })
+        });
+        const data = await response.json();
+        hideLoading();
+        if (data.success) {
+            showAlert('Set "' + name + '" creado exitosamente con ' + data.total_images + ' imágenes', 'success');
+            selectedImages = [];
+            document.getElementById('selected-images-container').innerHTML = '<div class="alert alert-info">No hay imágenes seleccionadas</div>';
+            document.getElementById('create-batch-form').reset();
+            document.getElementById('culture-type').value = 'monoclonal';
+            loadBatches();
+            document.querySelector('[data-bs-target="#existing"]').click();
+        } else {
+            showAlert('Error: ' + data.error, 'danger');
+        }
+    } catch (error) { 
+        hideLoading(); 
+        showAlert('Error de conexión: ' + error.message, 'danger'); 
+    }
+});
+
+document.getElementById('confirm-images').addEventListener('click', () => bootstrap.Modal.getInstance(document.getElementById('imageModal')).hide());
+
+loadBatches();
+loadAvailableImages();
+</script>
+{% endblock %}
